@@ -1,8 +1,9 @@
+import 'dart:typed_data';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../models/album_model.dart';
 
-/// Service to fetch media from device storage
+/// Service to fetch and manage media from device storage
 class MediaService {
   /// Request permission to access media
   static Future<bool> requestPermission() async {
@@ -70,5 +71,34 @@ class MediaService {
     );
 
     return assets.map((e) => MediaItem.fromAsset(e)).toList();
+  }
+
+  /// Delete a list of assets from device
+  static Future<List<String>> deleteAssets(List<String> ids) async {
+    try {
+      final List<String> result = await PhotoManager.editor.deleteWithIds(ids);
+      return result;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Save edited image to device storage
+  static Future<AssetEntity?> saveImage({
+    required List<int> imageBytes,
+    required String title,
+    String? description,
+  }) async {
+    try {
+      final AssetEntity? entity = await PhotoManager.editor.saveImage(
+        Uint8List.fromList(imageBytes),
+        filename: title,
+        title: title,
+        desc: description ?? '',
+      );
+      return entity;
+    } catch (e) {
+      return null;
+    }
   }
 }

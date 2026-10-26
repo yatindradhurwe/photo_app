@@ -2,13 +2,15 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
-import 'package:provider/provider.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../models/media_item.dart';
+import '../providers/gallery_provider.dart';
 import '../providers/google_drive_provider.dart';
 import '../services/share_service.dart';
 import '../utils/date_utils.dart';
+import 'photo_editor_screen.dart';
 
 class MediaViewerScreen extends StatefulWidget {
   final List<MediaItem> mediaItems;
@@ -28,10 +30,12 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   late PageController _pageController;
   late int _currentIndex;
   bool _showControls = true;
+  late List<MediaItem> _items;
 
   @override
   void initState() {
     super.initState();
+    _items = List.from(widget.mediaItems);
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
   }
@@ -42,10 +46,52 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     super.dispose();
   }
 
-  MediaItem get _currentItem => widget.mediaItems[_currentIndex];
+  MediaItem get _currentItem => _items[_currentIndex];
+
+  void _onDeletePressed() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Media'),
+        content: const Text('Are you sure you want to delete this file from your device?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final deleted = await context.read<GalleryProvider>().deleteSingleItem(_currentItem.id);
+              if (deleted && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Item deleted successfully')),
+                );
+                setState(() {
+                  _items.removeAt(_currentIndex);
+                  if (_items.isEmpty) {
+                    Navigator.pop(context);
+                  } else {
+                    if (_currentIndex >= _items.length) {
+                      _currentIndex = _items.length - 1;
+                    }
+                  }
+                });
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_items.isEmpty) {
+      return const Scaffold(backgroundColor: Colors.black);
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
@@ -57,12 +103,12 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
             // Media viewer
             PageView.builder(
               controller: _pageController,
-              itemCount: widget.mediaItems.length,
+              itemCount: _items.length,
               onPageChanged: (index) {
                 setState(() => _currentIndex = index);
               },
               itemBuilder: (context, index) {
-                final item = widget.mediaItems[index];
+                final item = _items[index];
                 if (item.isVideo) {
                   return _VideoPlayerWidget(item: item);
                 }
@@ -93,8 +139,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       child: Row(
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.arrow_back,
-                                color: Colors.white),
+                            icon: const Icon(Icons.arrow_back, color: Colors.white),
                             onPressed: () => Navigator.pop(context),
                           ),
                           Expanded(
@@ -112,8 +157,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
-                                  AppDateUtils.formatDate(
-                                      _currentItem.createDateTime),
+                                  AppDateUtils.formatDate(_currentItem.createDateTime),
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.7),
                                     fontSize: 13,
@@ -121,6 +165,29 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                                 ),
                               ],
                             ),
+                          ),
+                          // Edit Button for Photos
+                          if (_currentItem.isImage)
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, color: Colors.white),
+                              tooltip: 'Edit & Crop',
+                              onPressed: () async {
+                                final edited = await Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PhotoEditorScreen(mediaItem: _currentItem),
+                                  ),
+                                );
+                                if (edited == true && mounted) {
+                                  Navigator.pop(context); // return to gallery to see newly saved item
+                                }
+                              },
+                            ),
+                          // Delete button
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.white),
+                            tooltip: 'Delete',
+                            onPressed: _onDeletePressed,
                           ),
                         ],
                       ),
@@ -148,27 +215,40 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   ),
                   child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _buildBottomAction(
                             icon: Icons.share,
                             label: 'Share',
-                            onTap: () =>
-                                ShareService.shareMedia(_currentItem),
+                            onTap: () => ShareService.shareMedia(_currentItem),
                           ),
                           _buildBottomAction(
                             icon: Icons.cloud_upload,
                             label: 'Upload',
                             onTap: () => _uploadToDrive(context),
                           ),
+                          if (_currentItem.isImage)
+                            _buildBottomAction(
+                              icon: Icons.crop_rotate,
+                              label: 'Edit',
+                              onTap: () async {
+                                final edited = await Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PhotoEditorScreen(mediaItem: _currentItem),
+                                  ),
+                                );
+                                if (edited == true && mounted) {
+                                  Navigator.pop(context);
+                                }
+                              },
+                            ),
                           _buildBottomAction(
                             icon: Icons.info_outline,
                             label: 'Info',
-                            onTap: () =>
-                                _showInfoSheet(context, _currentItem),
+                            onTap: () => _showInfoSheet(context, _currentItem),
                           ),
                         ],
                       ),
@@ -178,21 +258,20 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
               ),
 
             // Page indicator
-            if (_showControls && widget.mediaItems.length > 1)
+            if (_showControls && _items.length > 1)
               Positioned(
                 bottom: 80,
                 left: 0,
                 right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      '${_currentIndex + 1} / ${widget.mediaItems.length}',
+                      '${_currentIndex + 1} / ${_items.length}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
@@ -216,14 +295,13 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: Colors.white, size: 24),
             const SizedBox(height: 4),
-            Text(label,
-                style: const TextStyle(color: Colors.white, fontSize: 12)),
+            Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
           ],
         ),
       ),
@@ -324,7 +402,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   }
 }
 
-/// Widget to display a single image with zoom
+/// Widget to display a single image with smooth double-tap and pinch-to-zoom
 class _ImageViewWidget extends StatefulWidget {
   final MediaItem item;
 
@@ -337,15 +415,22 @@ class _ImageViewWidget extends StatefulWidget {
 class _ImageViewWidgetState extends State<_ImageViewWidget> {
   File? _file;
   Uint8List? _thumbnailData;
+  late PhotoViewController _photoViewController;
 
   @override
   void initState() {
     super.initState();
+    _photoViewController = PhotoViewController();
     _loadImage();
   }
 
+  @override
+  void dispose() {
+    _photoViewController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadImage() async {
-    // Load thumbnail first for fast display
     final thumb = await widget.item.asset.thumbnailDataWithSize(
       const ThumbnailSize(800, 800),
       quality: 90,
@@ -356,7 +441,6 @@ class _ImageViewWidgetState extends State<_ImageViewWidget> {
       });
     }
 
-    // Then load full resolution
     final file = await widget.item.asset.file;
     if (mounted) {
       setState(() {
@@ -369,9 +453,12 @@ class _ImageViewWidgetState extends State<_ImageViewWidget> {
   Widget build(BuildContext context) {
     if (_file != null) {
       return PhotoView(
+        controller: _photoViewController,
         imageProvider: FileImage(_file!),
         minScale: PhotoViewComputedScale.contained,
-        maxScale: PhotoViewComputedScale.covered * 3,
+        maxScale: PhotoViewComputedScale.covered * 4.0,
+        initialScale: PhotoViewComputedScale.contained,
+        enableRotation: true,
         backgroundDecoration: const BoxDecoration(color: Colors.black),
         loadingBuilder: (context, event) => Center(
           child: _thumbnailData != null
@@ -414,7 +501,6 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
   }
 
   Future<void> _loadVideo() async {
-    // Load thumbnail
     final thumb = await widget.item.asset.thumbnailDataWithSize(
       const ThumbnailSize(800, 800),
       quality: 90,
@@ -423,7 +509,6 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
       setState(() => _thumbnailData = thumb);
     }
 
-    // Load video file
     final file = await widget.item.asset.file;
     if (file != null && mounted) {
       _controller = VideoPlayerController.file(file);
@@ -483,8 +568,7 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
                 color: Colors.black.withOpacity(0.6),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.play_arrow,
-                  color: Colors.white, size: 40),
+              child: const Icon(Icons.play_arrow, color: Colors.white, size: 40),
             ),
           ),
         if (_isInitialized && _isPlaying)

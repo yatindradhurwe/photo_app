@@ -227,4 +227,43 @@ class GalleryProvider extends ChangeNotifier {
   }
 
   bool isItemSelected(String id) => _selectedItems.contains(id);
+
+  /// Delete selected items
+  Future<bool> deleteSelectedItems() async {
+    if (_selectedItems.isEmpty) return false;
+
+    final idsToDelete = _selectedItems.toList();
+    final deletedIds = await MediaService.deleteAssets(idsToDelete);
+
+    if (deletedIds.isNotEmpty) {
+      final deletedSet = deletedIds.toSet();
+      _allMedia.removeWhere((item) => deletedSet.contains(item.id));
+      _selectedItems.clear();
+      _isSelectionMode = false;
+      notifyListeners();
+      _loadAlbums();
+      return true;
+    }
+    return false;
+  }
+
+  /// Delete a single media item
+  Future<bool> deleteSingleItem(String id) async {
+    final deletedIds = await MediaService.deleteAssets([id]);
+    if (deletedIds.isNotEmpty) {
+      _allMedia.removeWhere((item) => item.id == id);
+      _selectedItems.remove(id);
+      notifyListeners();
+      _loadAlbums();
+      return true;
+    }
+    return false;
+  }
+
+  /// Add a newly saved or edited media item to top of list
+  void addMediaItem(MediaItem item) {
+    _allMedia.insert(0, item);
+    notifyListeners();
+    _loadAlbums();
+  }
 }
