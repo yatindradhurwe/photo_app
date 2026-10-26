@@ -1,0 +1,61 @@
+name: photo_app
+description: "A Flutter Photos app - Gallery with Google Drive integration"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Media access
+  photo_manager: ^3.6.3
+  
+  # State management
+  provider: ^6.1.2
+  
+  # Video playback
+  video_player: ^2.9.3
+  
+  # Image caching
+  cached_network_image: ^3.4.1
+  
+  # Google Sign-In & Drive
+  google_sign_in: ^6.2.2
+  googleapis: ^14.0.0
+  googleapis_auth: ^2.0.0
+  http: ^1.4.0
+  
+  # Share
+  share_plus: ^10.1.4
+  
+  # Path & file utilities
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  
+  # Permissions
+  permission_handler: ^11.3.1
+  
+  # Image viewer
+  photo_view: ^0.15.0
+  
+  # Shimmer loading
+  shimmer: ^3.0.0
+  
+  # Intl for date formatting
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
