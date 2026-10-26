@@ -57,10 +57,16 @@
 ## ✨ Features
 
 - **🚫 100% Ad-Free & Tracker-Free**: Pure gallery experience. No intrusive pop-ups, banner advertisements, or background tracking.
-- **🖼️ Unified Media Timeline**: Aggregates all on-device photos and videos with fast, memory-optimized thumbnail caching.
+- **🖼️ Unified Media Timeline**: Aggregates all on-device photos and videos with fast, memory-optimized thumbnail caching and instant filter chips (All, Photos, Videos).
 - **📂 Smart Directory Organization**: Automatically categorizes files into device folders with live item counts and folder cover thumbnails.
-- **🎬 Built-In Video Player**: Plays local MP4/MKV video files with interactive playback scrubbers and duration overlays.
-- **🔎 Pinch-To-Zoom Photo Viewer**: Inspect high-resolution photos with fluid pan and zoom gestures.
+- **✂️ Comprehensive Photo Editor**: Crop to custom/fixed ratios, rotate 90°, flip horizontally/vertically, adjust brightness/contrast, and apply artistic filters (Sepia, Grayscale, Vintage, Cool, Warm).
+- **🎬 Advanced Video Player**: Fluid play/pause controls, 10-second forward/rewind, interactive scrubbing bar, and custom playback speed controller (0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x).
+- **🔄 Full-Screen 90° Media Rotation**: Rotate any image or video by 90° on the fly directly inside the full-screen immersive viewer.
+- **🔎 Easy 4x Zoom In/Out**: Inspect high-resolution photos with pinch-to-zoom gestures, double-tap zoom, and fluid panning.
+- **📋 Copy & Paste Duplication**: Duplicate any photo directly in your storage with one tap.
+- **🎞️ Animated GIF Maker**: Select multiple photos and generate custom animated GIFs with adjustable frame durations.
+- **🔒 Hidden / Private Folder**: Safely move sensitive photos to a private hidden vault and restore them back to your gallery at any time.
+- **🗑️ Single & Batch Deletion**: Delete individual media items or multi-select dozens of photos/videos for bulk deletion with instant library refresh.
 - **☁️ Google Drive Cloud Backup**: Connect your Google Account and upload individual or batch-selected media to a dedicated `PhotoApp Uploads` folder.
 - **📤 Multi-Select & Share**: Long-press any photo or video to select multiple items for batch sharing across WhatsApp, Telegram, Email, or Bluetooth.
 - **🌓 Dark & Light Modes**: Fully adaptive Material You themes designed for battery saving on AMOLED displays.

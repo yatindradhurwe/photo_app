@@ -32,6 +32,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   bool _showControls = true;
   late List<MediaItem> _items;
 
+  // View state: 0, 1, 2, 3 quarter turns
+  int _viewerRotationTurns = 0;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +50,12 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   }
 
   MediaItem get _currentItem => _items[_currentIndex];
+
+  void _rotateCurrent() {
+    setState(() {
+      _viewerRotationTurns = (_viewerRotationTurns + 1) % 4;
+    });
+  }
 
   void _onDeletePressed() {
     showDialog(
@@ -95,25 +104,35 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
         onTap: () {
           setState(() => _showControls = !_showControls);
         },
         child: Stack(
           children: [
-            // Media viewer
-            PageView.builder(
-              controller: _pageController,
-              itemCount: _items.length,
-              onPageChanged: (index) {
-                setState(() => _currentIndex = index);
-              },
-              itemBuilder: (context, index) {
-                final item = _items[index];
-                if (item.isVideo) {
-                  return _VideoPlayerWidget(item: item);
-                }
-                return _ImageViewWidget(item: item);
-              },
+            // Media viewer PageView with rotation
+            RotatedBox(
+              quarterTurns: _viewerRotationTurns,
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: _items.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                    _viewerRotationTurns = 0; // reset rotation on page change
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final item = _items[index];
+                  if (item.isVideo) {
+                    return _VideoPlayerWidget(
+                      item: item,
+                      showControls: _showControls,
+                    );
+                  }
+                  return _ImageViewWidget(item: item);
+                },
+              ),
             ),
 
             // Top bar
@@ -128,14 +147,14 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.75),
                         Colors.transparent,
                       ],
                     ),
                   ),
                   child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       child: Row(
                         children: [
                           IconButton(
@@ -166,6 +185,12 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                               ],
                             ),
                           ),
+                          // Rotate button (Works for both Image & Video)
+                          IconButton(
+                            icon: const Icon(Icons.rotate_right, color: Colors.white),
+                            tooltip: 'Rotate 90°',
+                            onPressed: _rotateCurrent,
+                          ),
                           // Edit Button for Photos
                           if (_currentItem.isImage)
                             IconButton(
@@ -179,7 +204,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                                   ),
                                 );
                                 if (edited == true && mounted) {
-                                  Navigator.pop(context); // return to gallery to see newly saved item
+                                  Navigator.pop(context);
                                 }
                               },
                             ),
@@ -254,7 +279,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withOpacity(0.7),
+                        Colors.black.withOpacity(0.75),
                         Colors.transparent,
                       ],
                     ),
@@ -303,7 +328,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 ),
               ),
 
-            // Page indicator
+            // Page indicator badge
             if (_showControls && _items.length > 1)
               Positioned(
                 bottom: 80,
@@ -313,7 +338,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withOpacity(0.6),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
@@ -321,6 +346,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -401,10 +427,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
               const SizedBox(height: 20),
               const Text(
                 'Details',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 16),
               _buildInfoRow(Icons.title, 'Name', item.title ?? 'Untitled'),
@@ -448,7 +471,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   }
 }
 
-/// Widget to display a single image with smooth double-tap and pinch-to-zoom
+/// Widget to display a single image with smooth double-tap, pinch-to-zoom and full screen
 class _ImageViewWidget extends StatefulWidget {
   final MediaItem item;
 
@@ -482,16 +505,12 @@ class _ImageViewWidgetState extends State<_ImageViewWidget> {
       quality: 90,
     );
     if (mounted) {
-      setState(() {
-        _thumbnailData = thumb;
-      });
+      setState(() => _thumbnailData = thumb);
     }
 
     final file = await widget.item.asset.file;
     if (mounted) {
-      setState(() {
-        _file = file;
-      });
+      setState(() => _file = file);
     }
   }
 
@@ -524,11 +543,15 @@ class _ImageViewWidgetState extends State<_ImageViewWidget> {
   }
 }
 
-/// Widget to play a video
+/// Widget to play a video with Play/Pause, Speed Control (0.5x, 1.0x, 1.5x, 2.0x), Scrubber and Full Screen
 class _VideoPlayerWidget extends StatefulWidget {
   final MediaItem item;
+  final bool showControls;
 
-  const _VideoPlayerWidget({required this.item});
+  const _VideoPlayerWidget({
+    required this.item,
+    required this.showControls,
+  });
 
   @override
   State<_VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
@@ -539,6 +562,9 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
   bool _isInitialized = false;
   bool _isPlaying = false;
   Uint8List? _thumbnailData;
+  double _playbackSpeed = 1.0;
+
+  final List<double> _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
   @override
   void initState() {
@@ -559,14 +585,29 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
     if (file != null && mounted) {
       _controller = VideoPlayerController.file(file);
       await _controller!.initialize();
+      _controller!.addListener(_videoListener);
       if (mounted) {
-        setState(() => _isInitialized = true);
+        setState(() {
+          _isInitialized = true;
+          _isPlaying = _controller!.value.isPlaying;
+        });
+      }
+    }
+  }
+
+  void _videoListener() {
+    if (mounted && _controller != null) {
+      if (_isPlaying != _controller!.value.isPlaying) {
+        setState(() {
+          _isPlaying = _controller!.value.isPlaying;
+        });
       }
     }
   }
 
   @override
   void dispose() {
+    _controller?.removeListener(_videoListener);
     _controller?.dispose();
     super.dispose();
   }
@@ -584,11 +625,20 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
     });
   }
 
+  void _changeSpeed(double speed) {
+    if (_controller == null) return;
+    _controller!.setPlaybackSpeed(speed);
+    setState(() {
+      _playbackSpeed = speed;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       alignment: Alignment.center,
       children: [
+        // Video viewport (Sized to fill available screen)
         if (_isInitialized && _controller != null)
           Center(
             child: AspectRatio(
@@ -603,38 +653,159 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
         else
           const Center(child: CircularProgressIndicator()),
 
-        // Play/Pause overlay
+        // Center tap to Play/Pause
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _togglePlayPause,
+          child: const SizedBox.expand(),
+        ),
+
+        // Big Center Play/Pause Indicator (shown when paused or when controls are toggled)
         if (_isInitialized && !_isPlaying)
-          GestureDetector(
-            onTap: _togglePlayPause,
+          IgnorePointer(
             child: Container(
-              width: 64,
-              height: 64,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withOpacity(0.65),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.play_arrow, color: Colors.white, size: 40),
+              child: const Icon(Icons.play_arrow, color: Colors.white, size: 44),
             ),
           ),
-        if (_isInitialized && _isPlaying)
-          GestureDetector(
-            onTap: _togglePlayPause,
-            child: const SizedBox.expand(),
-          ),
 
-        // Video progress
-        if (_isInitialized && _controller != null)
+        // Video overlay controls (Play/Pause, Speed selector, Scrubber)
+        if (widget.showControls && _isInitialized && _controller != null)
           Positioned(
-            bottom: 60,
-            left: 16,
-            right: 16,
-            child: VideoProgressIndicator(
-              _controller!,
-              allowScrubbing: true,
-              colors: VideoProgressColors(
-                playedColor: Theme.of(context).primaryColor,
-                backgroundColor: Colors.white.withOpacity(0.3),
+            bottom: 75,
+            left: 12,
+            right: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.65),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Progress Bar & Duration
+                  Row(
+                    children: [
+                      ValueListenableBuilder(
+                        valueListenable: _controller!,
+                        builder: (context, VideoPlayerValue value, child) {
+                          return Text(
+                            AppDateUtils.formatDuration(value.position),
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: VideoProgressIndicator(
+                          _controller!,
+                          allowScrubbing: true,
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          colors: VideoProgressColors(
+                            playedColor: Theme.of(context).primaryColor,
+                            bufferedColor: Colors.white30,
+                            backgroundColor: Colors.white12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        AppDateUtils.formatDuration(_controller!.value.duration),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Bottom Controls: Play/Pause button + Speed Control
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Play/Pause button
+                      IconButton(
+                        icon: Icon(
+                          _isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                        onPressed: _togglePlayPause,
+                      ),
+
+                      // Replay 10s button
+                      IconButton(
+                        icon: const Icon(Icons.replay_10, color: Colors.white, size: 24),
+                        tooltip: 'Rewind 10s',
+                        onPressed: () {
+                          final current = _controller!.value.position;
+                          final target = current - const Duration(seconds: 10);
+                          _controller!.seekTo(target > Duration.zero ? target : Duration.zero);
+                        },
+                      ),
+
+                      // Forward 10s button
+                      IconButton(
+                        icon: const Icon(Icons.forward_10, color: Colors.white, size: 24),
+                        tooltip: 'Forward 10s',
+                        onPressed: () {
+                          final current = _controller!.value.position;
+                          final max = _controller!.value.duration;
+                          final target = current + const Duration(seconds: 10);
+                          _controller!.seekTo(target < max ? target : max);
+                        },
+                      ),
+
+                      // Speed Control Menu (0.5x, 1x, 1.5x, 2x)
+                      PopupMenuButton<double>(
+                        initialValue: _playbackSpeed,
+                        tooltip: 'Playback Speed',
+                        onSelected: _changeSpeed,
+                        color: const Color(0xFF2C2C2C),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white12,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.speed, color: Colors.white, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${_playbackSpeed}x',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        itemBuilder: (context) {
+                          return _speeds.map((s) {
+                            return PopupMenuItem<double>(
+                              value: s,
+                              child: Text(
+                                '${s}x',
+                                style: TextStyle(
+                                  color: s == _playbackSpeed ? Colors.blueAccent : Colors.white,
+                                  fontWeight: s == _playbackSpeed ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
