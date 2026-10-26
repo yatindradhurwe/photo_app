@@ -3,10 +3,11 @@ import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../models/album_model.dart';
 import '../services/media_service.dart';
+import '../services/hidden_media_service.dart';
 
 enum GalleryViewMode { all, photos, videos }
 
-/// Provider for gallery state management
+/// Provider for gallery state management with hidden folder and clipboard support
 class GalleryProvider extends ChangeNotifier {
   // State
   List<MediaItem> _allMedia = [];
@@ -19,8 +20,14 @@ class GalleryProvider extends ChangeNotifier {
   int _currentPage = 0;
   bool _hasMore = true;
   final int _pageSize = 80;
-  Set<String> _selectedItems = {};
+  final Set<String> _selectedItems = {};
   bool _isSelectionMode = false;
+
+  // Hidden folder state
+  Set<String> _hiddenIds = {};
+
+  // In-app Clipboard state for Copy/Paste
+  List<MediaItem> _clipboardItems = [];
 
   // Getters
   List<MediaItem> get allMedia => _allMedia;
@@ -33,26 +40,39 @@ class GalleryProvider extends ChangeNotifier {
   bool get hasMore => _hasMore;
   Set<String> get selectedItems => _selectedItems;
   bool get isSelectionMode => _isSelectionMode;
+  List<MediaItem> get clipboardItems => _clipboardItems;
+  bool get hasClipboardItems => _clipboardItems.isNotEmpty;
 
+  // Regular filtered media (excluding hidden items)
   List<MediaItem> get filteredMedia {
+    final visibleList = _allMedia.where((item) => !_hiddenIds.contains(item.id));
     switch (_viewMode) {
       case GalleryViewMode.photos:
-        return _allMedia.where((item) => item.isImage).toList();
+        return visibleList.where((item) => item.isImage).toList();
       case GalleryViewMode.videos:
-        return _allMedia.where((item) => item.isVideo).toList();
+        return visibleList.where((item) => item.isVideo).toList();
       case GalleryViewMode.all:
-        return _allMedia;
+        return visibleList.toList();
     }
   }
+
+  // Hidden media list
+  List<MediaItem> get hiddenMedia {
+    return _allMedia.where((item) => _hiddenIds.contains(item.id)).toList();
+  }
+
+  int get hiddenCount => _hiddenIds.length;
 
   List<MediaItem> get selectedMediaItems {
     return _allMedia.where((item) => _selectedItems.contains(item.id)).toList();
   }
 
-  /// Initialize - request permission and load media
+  /// Initialize - request permission, load hidden IDs and load media
   Future<void> initialize() async {
     _isLoading = true;
     notifyListeners();
+
+    _hiddenIds = await HiddenMediaService.getHiddenIds();
 
     _hasPermission = await MediaService.requestPermission();
     if (_hasPermission) {
@@ -152,6 +172,8 @@ class GalleryProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
+    _hiddenIds = await HiddenMediaService.getHiddenIds();
+
     await Future.wait([
       _loadMedia(),
       _loadAlbums(),
@@ -214,7 +236,8 @@ class GalleryProvider extends ChangeNotifier {
 
   /// Select all items
   void selectAll() {
-    _selectedItems = _allMedia.map((e) => e.id).toSet();
+    _selectedItems.clear();
+    _selectedItems.addAll(_allMedia.map((e) => e.id));
     _isSelectionMode = true;
     notifyListeners();
   }
@@ -227,6 +250,10 @@ class GalleryProvider extends ChangeNotifier {
   }
 
   bool isItemSelected(String id) => _selectedItems.contains(id);
+
+  // -------------------------------------------------------------
+  // DELETION
+  // -------------------------------------------------------------
 
   /// Delete selected items
   Future<bool> deleteSelectedItems() async {
@@ -260,7 +287,84 @@ class GalleryProvider extends ChangeNotifier {
     return false;
   }
 
-  /// Add a newly saved or edited media item to top of list
+  // -------------------------------------------------------------
+  // COPY & PASTE (DUPLICATE)
+  // -------------------------------------------------------------
+
+  /// Copy selected items to in-app clipboard
+  void copySelectedItems() {
+    _clipboardItems = selectedMediaItems;
+    clearSelection();
+    notifyListeners();
+  }
+
+  /// Copy single item to clipboard
+  void copySingleItem(MediaItem item) {
+    _clipboardItems = [item];
+    notifyListeners();
+  }
+
+  /// Paste (Duplicate) copied items into current gallery
+  Future<int> pasteCopiedItems() async {
+    if (_clipboardItems.isEmpty) return 0;
+
+    int pastedCount = 0;
+    for (final item in _clipboardItems) {
+      final file = await item.asset.file;
+      if (file == null) continue;
+
+      final bytes = await file.readAsBytes();
+      final title = "Copy_${DateTime.now().millisecondsSinceEpoch}_${item.title ?? 'photo.jpg'}";
+
+      final saved = await MediaService.saveImage(
+        imageBytes: bytes,
+        title: title,
+      );
+
+      if (saved != null) {
+        _allMedia.insert(0, MediaItem.fromAsset(saved));
+        pastedCount++;
+      }
+    }
+
+    if (pastedCount > 0) {
+      notifyListeners();
+      _loadAlbums();
+    }
+    return pastedCount;
+  }
+
+  // -------------------------------------------------------------
+  // HIDDEN FOLDER MANAGEMENT
+  // -------------------------------------------------------------
+
+  /// Hide selected items from the public gallery
+  Future<void> hideSelectedItems() async {
+    if (_selectedItems.isEmpty) return;
+
+    final idsToHide = _selectedItems.toList();
+    await HiddenMediaService.hideItems(idsToHide);
+    _hiddenIds.addAll(idsToHide);
+
+    clearSelection();
+    notifyListeners();
+  }
+
+  /// Hide a single item
+  Future<void> hideSingleItem(String id) async {
+    await HiddenMediaService.hideItems([id]);
+    _hiddenIds.add(id);
+    notifyListeners();
+  }
+
+  /// Unhide / restore items back to the public gallery
+  Future<void> unhideItems(List<String> ids) async {
+    await HiddenMediaService.unhideItems(ids);
+    _hiddenIds.removeAll(ids);
+    notifyListeners();
+  }
+
+  /// Add a newly created/edited media item to the top of the gallery
   void addMediaItem(MediaItem item) {
     _allMedia.insert(0, item);
     notifyListeners();

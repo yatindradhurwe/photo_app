@@ -183,6 +183,52 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                                 }
                               },
                             ),
+                          // Copy button
+                          IconButton(
+                            icon: const Icon(Icons.copy, color: Colors.white),
+                            tooltip: 'Copy to Clipboard',
+                            onPressed: () {
+                              context.read<GalleryProvider>().copySingleItem(_currentItem);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Copied to clipboard. Paste in Photos tab!')),
+                              );
+                            },
+                          ),
+                          // Hide button
+                          IconButton(
+                            icon: const Icon(Icons.lock_outline, color: Colors.white),
+                            tooltip: 'Hide to Private Folder',
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Hide Media'),
+                                  content: const Text(
+                                    'Hide this item from your main gallery? You can view or restore it anytime from Albums > Hidden Folder.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () async {
+                                        Navigator.pop(ctx);
+                                        await context.read<GalleryProvider>().hideSingleItem(_currentItem.id);
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Item moved to Hidden Folder')),
+                                          );
+                                          Navigator.pop(context);
+                                        }
+                                      },
+                                      child: const Text('Hide', style: TextStyle(color: Colors.amber)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                           // Delete button
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.white),

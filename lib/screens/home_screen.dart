@@ -5,6 +5,7 @@ import '../providers/google_drive_provider.dart';
 import '../widgets/media_thumbnail.dart';
 import '../widgets/google_account_widget.dart';
 import '../services/share_service.dart';
+import '../services/gif_service.dart';
 import 'album_screen.dart';
 import 'media_viewer_screen.dart';
 
@@ -18,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   final ScrollController _scrollController = ScrollController();
+  bool _isCreatingGif = false;
 
   @override
   void initState() {
@@ -42,6 +44,41 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _makeGifFromSelected(GalleryProvider provider) async {
+    final selectedPhotos = provider.selectedMediaItems.where((e) => e.isImage).toList();
+    if (selectedPhotos.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least 2 photos to create an animated GIF')),
+      );
+      return;
+    }
+
+    setState(() => _isCreatingGif = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Generating animated GIF from ${selectedPhotos.length} photos...')),
+    );
+
+    final gifItem = await GifService.createGifFromPhotos(items: selectedPhotos);
+
+    if (mounted) {
+      setState(() => _isCreatingGif = false);
+      if (gifItem != null) {
+        provider.addMediaItem(gifItem);
+        provider.clearSelection();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Animated GIF created and saved to gallery!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to generate GIF')),
+        );
+      }
+    }
   }
 
   @override
@@ -114,6 +151,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: provider.selectAll,
                       tooltip: 'Select all',
                     ),
+                  ] else ...[
+                    // Paste Button (Visible when user has copied items)
+                    if (provider.hasClipboardItems)
+                      TextButton.icon(
+                        icon: const Icon(Icons.paste, color: Colors.blueAccent),
+                        label: Text(
+                          'Paste (${provider.clipboardItems.length})',
+                          style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () async {
+                          final count = await provider.pasteCopiedItems();
+                          if (context.mounted && count > 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Pasted and duplicated $count items!')),
+                            );
+                          }
+                        },
+                      ),
                   ],
                 ],
                 bottom: provider.isSelectionMode
@@ -205,8 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.photo_library_outlined,
-                size: 80, color: Colors.grey[600]),
+            Icon(Icons.photo_library_outlined, size: 80, color: Colors.grey[600]),
             const SizedBox(height: 16),
             Text(
               'No media found',
@@ -280,8 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.photo_library_outlined,
-                size: 80, color: Colors.grey[600]),
+            Icon(Icons.photo_library_outlined, size: 80, color: Colors.grey[600]),
             const SizedBox(height: 24),
             const Text(
               'Permission Required',
@@ -299,8 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: const Icon(Icons.lock_open),
               label: const Text('Grant Permission'),
               style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -314,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildSelectionBar(GalleryProvider provider) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         boxShadow: [
@@ -326,42 +378,128 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildActionButton(
-              icon: Icons.share,
-              label: 'Share',
-              onTap: () {
-                ShareService.shareMultipleMedia(provider.selectedMediaItems);
-              },
-            ),
-            _buildActionButton(
-              icon: Icons.cloud_upload,
-              label: 'Upload',
-              onTap: () {
-                final driveProvider = context.read<GoogleDriveProvider>();
-                if (driveProvider.isSignedIn) {
-                  driveProvider.uploadMediaItems(provider.selectedMediaItems);
-                  provider.clearSelection();
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildActionButton(
+                icon: Icons.share,
+                label: 'Share',
+                onTap: () {
+                  ShareService.shareMultipleMedia(provider.selectedMediaItems);
+                },
+              ),
+              _buildActionButton(
+                icon: Icons.copy,
+                label: 'Copy',
+                onTap: () {
+                  final count = provider.selectedItems.length;
+                  provider.copySelectedItems();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Uploading to Google Drive...')),
+                    SnackBar(content: Text('Copied $count items! Tap "Paste" in Photos bar.')),
                   );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please connect Google Drive first'),
+                },
+              ),
+              _buildActionButton(
+                icon: Icons.gif_box_outlined,
+                label: _isCreatingGif ? 'Making...' : 'Make GIF',
+                onTap: _isCreatingGif ? () {} : () => _makeGifFromSelected(provider),
+              ),
+              _buildActionButton(
+                icon: Icons.lock_outline,
+                label: 'Hide',
+                iconColor: Colors.amber,
+                textColor: Colors.amber,
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Hide to Private Folder'),
+                      content: Text('Hide ${provider.selectedItems.length} items from main gallery?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            final count = provider.selectedItems.length;
+                            await provider.hideSelectedItems();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Moved $count items to Hidden Folder')),
+                              );
+                            }
+                          },
+                          child: const Text('Hide', style: TextStyle(color: Colors.amber)),
+                        ),
+                      ],
                     ),
                   );
-                }
-              },
-            ),
-            _buildActionButton(
-              icon: Icons.close,
-              label: 'Cancel',
-              onTap: provider.clearSelection,
-            ),
-          ],
+                },
+              ),
+              _buildActionButton(
+                icon: Icons.cloud_upload,
+                label: 'Upload',
+                onTap: () {
+                  final driveProvider = context.read<GoogleDriveProvider>();
+                  if (driveProvider.isSignedIn) {
+                    driveProvider.uploadMediaItems(provider.selectedMediaItems);
+                    provider.clearSelection();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Uploading to Google Drive...')),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please connect Google Drive first')),
+                    );
+                  }
+                },
+              ),
+              _buildActionButton(
+                icon: Icons.delete_outline,
+                label: 'Delete',
+                iconColor: Colors.redAccent,
+                textColor: Colors.redAccent,
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete Selected Items'),
+                      content: Text(
+                        'Are you sure you want to delete ${provider.selectedItems.length} items from your device?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            final count = provider.selectedItems.length;
+                            final success = await provider.deleteSelectedItems();
+                            if (mounted && success) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Deleted $count items')),
+                              );
+                            }
+                          },
+                          child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              _buildActionButton(
+                icon: Icons.close,
+                label: 'Cancel',
+                onTap: provider.clearSelection,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -460,18 +598,20 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    Color? iconColor,
+    Color? textColor,
   }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 24),
+            Icon(icon, size: 24, color: iconColor),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(fontSize: 12)),
+            Text(label, style: TextStyle(fontSize: 12, color: textColor)),
           ],
         ),
       ),
